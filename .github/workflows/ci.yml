@@ -5,28 +5,49 @@ on :
     branches : 
       - main
 
-jobs :
-  build :
-    runs-on : ubuntu-latest
-    steps :
-      - name : Checkout code
-        uses: actions/checkout@v3
-      
-      - name : Set up node js
-        uses : actions/setup-node@v3
-        with:
-          node-version: 20
-      
-      - name: Install dependencies # 패키지 설치
-        run: npm install
+env:
+  AWS_REGION: eu-central-1
+  ECR_REGISTRY: 966391709212.dkr.ecr.eu-central-1.amazonaws.com/user15-repo
+  ECR_REPOSITORY: user15-repo
+  IMAGE_TAG: latest
 
-      - name: Run tests  # 테스트 실행
-        run: npm test
-  
-  deploy :
-    needs : build
-    runs-on : ubuntu-latest
-    steps :
-      - name : Deploy to production
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 코드 체크아웃
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # AWS 자격증명 구성
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # ECR 로그인
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Docker 이미지 빌드 및 푸시
+      - name: Build, Tag, and Push image to ECR
+        env:
+          ECR_REGISTRY: ${{ env.ECR_REGISTRY }}
+          ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
         run: |
-          echo "Deployment!!"
+          echo "Building Docker image..."
+          docker build -t $ECR_REPOSITORY:$IMAGE_TAG .
+          docker tag $ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "Pushing image to ECR..."
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      # 빌드 결과 확인용 로그
+      - name: Verify pushed image
+        run: |
+          echo "ECR image pushed:"
+          echo "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
